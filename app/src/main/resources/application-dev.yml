@@ -1,0 +1,11 @@
+# Профиль dev: включает POST /auth/dev/token (см. DevAuthController).
+# Запуск: spring-boot:run с --spring.profiles.active=dev
+# Или: java -jar ... --spring.profiles.active=dev
+
+logging:
+  level:
+    ru.razborka.marketplace: DEBUG
+
+app:
+  security:
+    disabled: true

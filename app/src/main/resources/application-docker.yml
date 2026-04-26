@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/marketplace
+  data:
+    redis:
+      host: redis
+  elasticsearch:
+    uris: http://elasticsearch:9200
+
+app:
+  datasource:
+    write:
+      url: ${APP_DS_WRITE_URL:jdbc:postgresql://postgres:5432/marketplace}
+      username: ${APP_DS_WRITE_USERNAME:marketplace}
+      password: ${APP_DS_WRITE_PASSWORD:marketplace}
+    read:
+      url: ${APP_DS_READ_URL:jdbc:postgresql://postgres:5432/marketplace}
+      username: ${APP_DS_READ_USERNAME:marketplace}
+      password: ${APP_DS_READ_PASSWORD:marketplace}
+  storage:
+    public-base-url: http://localhost:8080/files

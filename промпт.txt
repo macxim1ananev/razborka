@@ -1,0 +1,232 @@
+
+### Маркетплейс автозапчастей с авторазбора (Java/Spring)
+
+### 1. Общая цель
+
+Ты — архитектор и разработчик. Спроектируй и напиши код веб-приложения — маркетплейса по продаже автозапчастей с авторазбора. Это клон **Avito.ru** с адаптацией под автозапчасти. Все коммуникации, архитектурные решения и генерация кода должны быть **на русском языке**.
+
+**Ключевые отличия от Avito:**
+- Продаются **только автозапчасти с авторазбора**.
+- **Регистрация и вход — только через Telegram** (Telegram Login Widget).
+- Дополнительные сущности: карточка покупателя, расширенные фильтры по марке/модели/году и состоянию детали.
+
+**Стек технологий:**
+- **Backend:** Java 17+, Spring Boot 3, Spring Security, Spring Data JPA, Hibernate.
+- **Базы данных:** PostgreSQL (основная), Elasticsearch (поиск и фильтры), Redis (кэш и сессии).
+- **Аутентификация:** JWT (Access + Refresh токены) + интеграция с Telegram Login Widget.
+- **Frontend:** Рекомендуется Next.js (или React) с TypeScript, но фокус промпта — на бэкенде и API. Фронт описать логикой взаимодействия.
+- **Сборка и запуск:** Maven/Gradle, Docker Compose для локального развертывания всех сервисов.
+
+### 2. Архитектура
+
+Используй **микросервисную архитектуру** (можно начать с монолита с чёткими модулями, но с возможностью выделения). Микросервисы:
+
+1. **Auth Service** — регистрация/логин через Telegram, выдача JWT.
+2. **User Service** — профиль пользователя, карточка покупателя, избранное.
+3. **Listing Service** — CRUD объявлений (запчастей), статусы, фото.
+4. **Search Service** — поиск и фильтрация через Elasticsearch, фасеты.
+5. **Order/Chat Service** (опционально) — связь покупателя и продавца, чат (можно через Telegram, тогда не нужен свой чат).
+
+**Коммуникация между сервисами:** REST или асинхронная (Kafka/RabbitMQ) для синхронизации данных с Elasticsearch.
+
+**API:** RESTful с документацией OpenAPI (Swagger).
+
+### 3. Детальные функциональные требования
+
+#### 3.1. Регистрация и авторизация через Telegram (Auth Service)
+
+- Реализовать эндпоинт `/auth/telegram`:
+  - Принимает `initData` (строка из Telegram Login Widget).
+  - На бэкенде проверяет хеш через секретный ключ бота (`bot_token`).
+  - Если данные валидны — извлекаем `id`, `first_name`, `username`, `photo_url`.
+  - Ищем пользователя в БД по `telegram_id`. Если нет — создаём нового со статусом `ACTIVE`.
+  - Генерируем пару JWT (access, refresh), возвращаем клиенту.
+- Access token живёт 15 минут, refresh token — 30 дней.
+- Эндпоинт `/auth/refresh` для обновления токенов.
+- Все остальные эндпоинты защищены `JwtAuthenticationFilter`.
+
+#### 3.2. Главная страница (Listing Service + Search Service)
+
+- GET `/api/listings?page=0&size=20` — возвращает превью объявлений:
+  - id, заголовок, цена, первое фото, город (из профиля продавца), ключевые параметры (год, пробег для детали/авто).
+- Поддерживать кэширование в Redis (например, для первых 5 страниц).
+
+#### 3.3. Фильтры и поиск (Search Service)
+
+**Эндпоинт:** `GET /api/search`
+
+**Параметры фильтрации (обязательные для автозапчастей):**
+- `categoryId` — иерархическая категория (например, «Двигатель», «КПП»).
+- `brand` — марка авто (Toyota, BMW и т.д.).
+- `model` — модель авто.
+- `yearFrom` / `yearTo` — год выпуска авто, под который подходит деталь.
+- `engineVolume` — объём двигателя.
+- `partCondition` — состояние: `used`, `new`, `refurbished`.
+- `originalReplica` — оригинал / аналог.
+- `priceMin` / `priceMax`.
+- `city` — город продавца.
+
+**Реализация:**
+- Данные из Listing Service должны синхронизироваться с Elasticsearch (использовать `ElasticsearchRepository` или `RestHighLevelClient`).
+- Реализовать **фасетный поиск** (агрегации) — для каждого фильтра возвращать количество найденных товаров.
+
+#### 3.4. Категории
+
+- Таблица `categories` с self-связью (parent_id).
+- Эндпоинт `GET /api/categories/tree` — возвращает дерево категорий.
+- Каждая категория имеет список атрибутов (например, для категории «Двигатель» атрибуты: объём, тип топлива, мощность).
+
+#### 3.5. Карточка товара
+
+- `GET /api/listings/{id}` — полная информация:
+  - Описание, фото (массив ссылок), цена, состояние.
+  - Блок «Совместимость» (список моделей авто, под которые подходит деталь — можно хранить в отдельной таблице `listing_compatibility`).
+  - Контакты продавца (username в Telegram, кнопка «Написать в Telegram»).
+  - Другие объявления этого продавца (до 4 штук).
+
+#### 3.6. Карточка покупателя / Личный кабинет
+
+- `GET /api/users/me` — получить профиль (из User Service).
+- `PUT /api/users/me` — обновить контактный телефон, город, описание.
+- **Для продавца:**
+  - `POST /api/listings` — создание объявления (загрузка фото через отдельный эндпоинт, хранить на S3 или локально).
+  - `PUT /api/listings/{id}` — редактирование.
+  - `DELETE /api/listings/{id}` — удаление или пометка «продано».
+  - `GET /api/users/me/listings` — мои объявления.
+- **Для покупателя:**
+  - `GET /api/users/me/favorites` — избранные объявления.
+  - `POST /api/favorites/{listingId}` / `DELETE /api/favorites/{listingId}`.
+
+### 4. База данных (PostgreSQL)
+
+**Схема (упрощённая, но с учётом всех сущностей):**
+
+```sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    telegram_id BIGINT UNIQUE NOT NULL,
+    username VARCHAR(255),
+    first_name VARCHAR(255),
+    phone VARCHAR(20),
+    avatar_url TEXT,
+    city VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_online TIMESTAMP
+);
+
+CREATE TABLE categories (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    parent_id BIGINT REFERENCES categories(id) ON DELETE CASCADE,
+    level INT
+);
+
+CREATE TABLE listings (
+    id BIGSERIAL PRIMARY KEY,
+    seller_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id BIGINT NOT NULL REFERENCES categories(id),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    price DECIMAL(12,2) NOT NULL,
+    condition VARCHAR(50), -- used, new, refurbished
+    original_replica VARCHAR(50), -- original, replica, oem
+    status VARCHAR(50) DEFAULT 'active', -- active, sold, archived
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP
+);
+
+CREATE TABLE listing_photos (
+    id BIGSERIAL PRIMARY KEY,
+    listing_id BIGINT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    photo_url TEXT NOT NULL,
+    sort_order INT
+);
+
+-- Совместимость детали с автомобилями
+CREATE TABLE listing_compatibility (
+    id BIGSERIAL PRIMARY KEY,
+    listing_id BIGINT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    brand VARCHAR(100),
+    model VARCHAR(100),
+    year_from INT,
+    year_to INT,
+    engine_volume DECIMAL(4,1)
+);
+
+CREATE TABLE favorites (
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    listing_id BIGINT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, listing_id)
+);
+```
+
+### 5. Нефункциональные требования
+
+- **Производительность:** ответ API поиска < 500 мс при 10 000 объявлений.
+- **Масштабируемость:** каждый микросервис должен быть stateless, чтобы горизонтально масштабироваться.
+- **Безопасность:** валидация всех входных данных, защита от SQL-инъекций (использовать JPA/Hibernate), JWT хранить в HttpOnly cookie (или в localStorage с осторожностью). Проверка прав доступа: изменять/удалять объявление может только его владелец.
+
+### 6. Интеграция с Telegram (подробно)
+
+1. Создать бота у `@BotFather`, получить `bot_token`.
+2. На фронте вставить виджет авторизации:
+   ```html
+   <script async src="https://telegram.org/js/telegram-widget.js?22" 
+     data-telegram-login="YourBotUsername" 
+     data-size="large" 
+     data-auth-url="https://yourapp.com/auth/telegram" 
+     data-request-access="write">
+   </script>
+   ```
+   Либо использовать `data-onauth` и отправку initData на свой бэкенд.
+3. На бэкенде (Java) проверить подпись:
+   - Взять строку вида `id=123&first_name=Ivan&...` и хеш `hash=...`.
+   - Отсортировать параметры (кроме hash), создать строку `key=value\nkey2=value2`, вычислить HMAC-SHA256 через секрет бота (токен) как ключ.
+   - Сравнить полученный хеш с тем, что пришёл.
+   - Если совпадает — авторизация успешна.
+
+**Пример кода проверки:**
+
+```java
+public boolean verifyTelegramAuth(Map<String, String> data, String botToken) {
+    String hash = data.remove("hash");
+    List<String> keys = new ArrayList<>(data.keySet());
+    Collections.sort(keys);
+    StringBuilder sb = new StringBuilder();
+    for (String key : keys) {
+        sb.append(key).append("=").append(data.get(key)).append("\n");
+    }
+    sb.deleteCharAt(sb.length() - 1);
+    Mac mac = Mac.getInstance("HmacSHA256");
+    SecretKeySpec secret = new SecretKeySpec(botToken.getBytes(UTF_8), "HmacSHA256");
+    mac.init(secret);
+    byte[] calculatedHash = mac.doFinal(sb.toString().getBytes(UTF_8));
+    String calculatedHex = Hex.encodeHexString(calculatedHash);
+    return calculatedHex.equals(hash);
+}
+```
+
+### 7. План реализации (по шагам)
+
+1. Настройка проекта: Spring Boot Initializr, Docker Compose (Postgres, Redis, Elasticsearch).
+2. Реализовать Auth Service с проверкой Telegram и выдачей JWT.
+3. Реализовать User Service (профиль, избранное).
+4. Реализовать Listing Service (CRUD объявлений, фото, совместимость).
+5. Реализовать Search Service (синхронизация с ES, эндпоинт поиска с фасетами).
+6. Написать интеграционные тесты на ключевые сценарии (регистрация, создание объявления, поиск).
+7. Подготовить OpenAPI спецификацию.
+
+---
+
+### 8. Ожидаемый результат от ИИ
+
+На основе этого промпта ты (ИИ) должен сгенерировать:
+- Полный код Spring Boot приложения (или нескольких сервисов) на Java.
+- Конфигурационные файлы (application.yml, Dockerfile, docker-compose.yml).
+- SQL-скрипты миграций (Liquibase или Flyway).
+- Примеры запросов к API (curl или Postman коллекция).
+- Краткую инструкцию по запуску.
+
+**Важно:** Код должен быть production-ready, с обработкой ошибок, логированием, валидацией (использовать Spring Validation). Не забывай про транзакционность (`@Transactional`).

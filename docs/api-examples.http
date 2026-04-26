@@ -1,0 +1,57 @@
+### Переменные
+@baseUrl = http://localhost:8080
+@accessToken = YOUR_ACCESS_JWT
+
+### Telegram-авторизация (подставьте реальную строку initData с виджета)
+POST {{baseUrl}}/auth/telegram
+Content-Type: application/json
+
+{
+  "initData": "auth_date=123&id=1&first_name=Test&hash=..."
+}
+
+### Обновление токенов
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "YOUR_REFRESH_JWT"
+}
+
+### Dev: JWT без Telegram (только --spring.profiles.active=dev, пользователи из Flyway V3)
+POST {{baseUrl}}/auth/dev/token
+
+### Dev: второй тестовый пользователь (telegram_id 999000002)
+POST {{baseUrl}}/auth/dev/token?telegramId=999000002
+
+### Лента объявлений
+GET {{baseUrl}}/api/listings?page=0&size=20
+
+### Поиск с фильтрами и фасетами
+GET {{baseUrl}}/api/search?categoryId=1&brand=Toyota&yearFrom=2010&yearTo=2020&partCondition=used&page=0&size=20
+
+### Дерево категорий
+GET {{baseUrl}}/api/categories/tree
+
+### Профиль (JWT)
+GET {{baseUrl}}/api/users/me
+Authorization: Bearer {{accessToken}}
+
+### Создать объявление
+POST {{baseUrl}}/api/listings
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "categoryId": 1,
+  "title": "Мотор 2.0",
+  "description": "С разборки",
+  "price": 150000,
+  "condition": "used",
+  "originalReplica": "original",
+  "mileageKm": 180000,
+  "vehicleYear": 2015,
+  "compatibility": [
+    { "brand": "Toyota", "model": "Camry", "yearFrom": 2012, "yearTo": 2017, "engineVolume": 2.0 }
+  ]
+}

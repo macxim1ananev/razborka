@@ -1,0 +1,13 @@
+﻿**/.git
+**/.idea
+**/.vscode
+**/node_modules
+**/.next
+**/dist
+**/build
+**/target
+**/.DS_Store
+**/*.log
+data
+web/node_modules
+web/.next

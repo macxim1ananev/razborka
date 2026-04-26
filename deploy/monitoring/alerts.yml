@@ -1,0 +1,20 @@
+groups:
+  - name: marketplace-read-heavy
+    rules:
+      - alert: HighP95ReadLatency
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{uri=~"/api/listings.*|/api/search.*"}[5m])) by (le)) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая latency чтения p95"
+          description: "p95 для операций чтения превышает 200ms более 5 минут."
+
+      - alert: Elevated5xxRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1) > 0.03
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Повышенная доля 5xx"
+          description: "Доля ответов 5xx выше 3% в течение 5 минут."
