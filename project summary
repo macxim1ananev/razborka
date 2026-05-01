@@ -1,0 +1,111 @@
+# Project Summary
+
+## Назначение
+- Монорепозиторий бэкенда маркетплейса автозапчастей: аутентификация, объявления, избранное, профиль, полнотекстовый поиск.
+- Точка входа: `app/src/main/java/ru/razborka/marketplace/MarketplaceApplication.java`.
+- Технологии: Spring Boot, Spring Security (JWT), JPA (PostgreSQL), Elasticsearch, Caching, Async events.
+
+## Модуль `common` (базовые кросс-срезы)
+- `common.exception.BusinessException` — базовая бизнес-ошибка с кодом и details.
+- `common.exception.NotFoundException` — специализированная ошибка "не найдено".
+- `common.exception.ForbiddenException` — специализированная ошибка доступа.
+- `common.api.ApiErrorResponse` — единый формат error-ответов API.
+- `common.security.SecurityUtils` — извлечение `userId` из `SecurityContext`, требование авторизации.
+
+## Модуль `app` (инфраструктурная сборка приложения)
+- `config.AsyncConfig` — пул `applicationTaskExecutor` для асинхронных задач.
+- `config.WebSocketConfig` — STOMP endpoint `/ws`, префиксы broker `/topic|/queue`, application `/app`.
+- `config.WebSocketAuthChannelInterceptor` — JWT-аутентификация CONNECT для websocket.
+- `config.CorsConfig` — CORS-политика по `app.cors.allowed-origins`.
+- `config.DatabaseRoutingConfig` — роутинг read/write datasource + fallback read->write.
+- `config.GlobalExceptionHandler` — маппинг исключений в HTTP-ответы.
+- `config.OpenApiConfig` — OpenAPI/Swagger и схема Bearer JWT.
+- `config.CacheWarmupRunner` — прогрев кешей листинга и поиска после старта.
+- `config.SearchReindexRunner` — первичная переиндексация активных объявлений в search.
+
+## Модуль `auth` (аутентификация и авторизация)
+
+### Бизнес-сервис
+- `auth.service.AuthService` — контракт auth use-cases.
+- `auth.service.AuthServiceImpl` — Telegram login, refresh flow, выдача JWT-пары, управление refresh-token lifecycle.
+
+### JWT и безопасность
+- `auth.jwt.JwtService` — создание/парсинг access/refresh JWT.
+- `auth.jwt.JwtProperties` — конфиг JWT TTL/secret/cookie-параметров.
+- `auth.security.JwtAuthenticationFilter` — извлечение JWT из Bearer/cookie и установка authentication.
+- `auth.security.SecurityConfig` — security filter chain, публичные/закрытые роуты, stateless режим.
+
+### Telegram интеграция
+- `auth.telegram.TelegramInitDataParser` — разбор `initData` query-string.
+- `auth.telegram.TelegramLoginVerifier` — верификация Telegram подписи и извлечение payload пользователя.
+- `auth.config.TelegramBotProperties` — конфиг токена Telegram-бота.
+- `auth.config.AuthBeansConfig` — регистрация configuration properties auth-модуля.
+
+### HTTP слой
+- `auth.web.AuthController` — `/auth/telegram`, `/auth/refresh`.
+- `auth.web.DevAuthController` — dev-only выдача JWT для тестовых telegram id.
+- `auth.web.JwtCookiesAppender` — запись access/refresh токенов в cookies.
+- `auth.repository.RefreshTokenRepository` — хранение/поиск/ревокация refresh токенов.
+
+## Модуль `listing` (каталог объявлений)
+
+### Бизнес-сервисы
+- `listing.service.ListingService` / `ListingServiceImpl` — CRUD объявлений, фото, валидация владельца, публикация событий индексации.
+- `listing.service.CategoryService` / `CategoryServiceImpl` — дерево категорий и атрибуты категорий.
+- `listing.service.FavoriteService` / `FavoriteServiceImpl` — управление избранным пользователя.
+- `listing.service.VehicleCatalogService` / `VehicleCatalogServiceImpl` — справочник марка/модель/поколение.
+- `listing.service.ChatService` / `ChatServiceImpl` — диалоги покупатель-продавец по объявлению, отправка сообщений, список чатов и непрочитанные.
+
+### Медиа и хранение (инфраструктура)
+- `listing.storage.StorageService` — контракт storage-адаптера.
+- `listing.storage.LocalStorageService` — локальное файловое хранение изображений + публичный URL.
+- `listing.media.ListingMediaDeliveryService` — преобразование URL фото в публичный CDN/origin URL.
+- `listing.media.ListingMediaDeliveryProperties` — настройки выдачи медиа URL.
+- `listing.config.ListingMediaDeliveryConfig` — регистрация media properties.
+- `listing.config.LocalFilesWebConfig` — публикация локальных файлов по `/files/**`.
+
+### HTTP слой
+- `listing.web.ListingController` — публичные/авторизованные endpoints объявлений.
+- `listing.web.MyListingsController` — объявления текущего пользователя.
+- `listing.web.CategoryController` — категории и их атрибуты.
+- `listing.web.FavoriteController` — endpoints избранного.
+- `listing.web.VehicleCatalogController` — endpoints каталога авто.
+- `listing.web.ChatController` — чат: старт диалога, отправка сообщений, список диалогов, история, unread-count.
+
+### Realtime чат (WebSocket/STOMP)
+- `app.chat.realtime.ChatRealtimeController` — события `typing` и онлайн-снимок по треду.
+- `app.chat.realtime.ChatPresenceEventsListener` — connect/disconnect websocket и публикация online/offline событий в треды.
+- `app.chat.realtime.OnlineUsersRegistry` — реестр онлайн-пользователей по websocket-сессиям.
+- `listing.service.ChatServiceImpl` — публикация новых сообщений в топик треда `/topic/chat.thread.{id}.messages`.
+
+### Данные и события
+- `listing.repository.ListingRepository` — выборки листингов (детали, страницы, id для индексации).
+- `listing.repository.CategoryRepository` — выборки категорий/дерева.
+- `listing.repository.CategoryAttributeRepository` — атрибуты категории.
+- `listing.repository.FavoriteRepository` — избранное пользователя.
+- `listing.repository.VehicleMakeRepository` — марки авто.
+- `listing.repository.VehicleModelRepository` — модели авто.
+- `listing.repository.VehicleGenerationRepository` — поколения авто.
+- `listing.repository.ChatThreadRepository` — диалоги между покупателем и продавцом в контексте объявления.
+- `listing.repository.ChatMessageRepository` — сообщения диалогов и метрики непрочитанных.
+- `listing.event.ListingIndexEvent` — доменное событие для синхронизации search-индекса.
+
+## Модуль `search` (поисковый контур)
+
+### Бизнес-сервисы
+- `search.service.MarketplaceSearchService` / `MarketplaceSearchServiceImpl` — полнотекстовый поиск и фасеты в Elasticsearch.
+- `search.service.ListingIndexService` / `ListingIndexServiceImpl` — upsert/delete документов индекса, retry при сбоях.
+
+### Интеграция и HTTP слой
+- `search.listener.ListingIndexListener` — async обработка `ListingIndexEvent` после commit.
+- `search.web.SearchController` — HTTP API поиска `/api/search`.
+- `search.repository.ListingSearchRepository` — Elasticsearch repository для `ListingSearchDocument`.
+
+## Модуль `user` (профиль пользователя)
+- `user.service.UserProfileService` / `UserProfileServiceImpl` — чтение/обновление профиля текущего пользователя.
+- `user.web.UserController` — `/api/users/me` (GET/PUT).
+- `user.repository.UserRepository` — доступ к пользователям (включая lookup по telegramId).
+
+## Правило актуальности этого файла
+- Перед любыми архитектурными или кодовыми изменениями сверяться с этим файлом.
+- Если добавились/удалились/изменились классы, сервисы, контракты или зоны ответственности — обновлять этот файл в той же задаче.

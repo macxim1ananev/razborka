@@ -16,7 +16,10 @@ public class CacheWarmupRunner {
     private final ListingService listingService;
     private final MarketplaceSearchService marketplaceSearchService;
 
-    public CacheWarmupRunner(ListingService listingService, MarketplaceSearchService marketplaceSearchService) {
+    public CacheWarmupRunner(
+            ListingService listingService,
+            MarketplaceSearchService marketplaceSearchService
+    ) {
         this.listingService = listingService;
         this.marketplaceSearchService = marketplaceSearchService;
     }
