@@ -112,6 +112,51 @@ export async function updateMe(body: { phone?: string; city?: string; bio?: stri
   });
 }
 
+export async function fetchMyCars() {
+  return apiFetch<import("./types").UserCar[]>("/api/users/me/cars");
+}
+
+export async function createMyCar(payload: {
+  displayName: string;
+  brand: string;
+  model: string;
+  generation?: string;
+  year?: number;
+  engineVolume?: number;
+}) {
+  return apiFetch<import("./types").UserCar>("/api/users/me/cars", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMyCar(
+  carId: number,
+  payload: {
+    displayName: string;
+    brand: string;
+    model: string;
+    generation?: string;
+    year?: number;
+    engineVolume?: number;
+  }
+) {
+  return apiFetch<import("./types").UserCar>(`/api/users/me/cars/${carId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteMyCar(carId: number) {
+  await apiFetch<void>(`/api/users/me/cars/${carId}`, { method: "DELETE" });
+}
+
+export async function activateMyCar(carId: number) {
+  return apiFetch<import("./types").UserCar>(`/api/users/me/cars/${carId}/activate`, {
+    method: "POST",
+  });
+}
+
 export async function fetchMyListings(page: number, size: number) {
   return apiFetch<PageDto<import("./types").ListingPreview>>(
     `/api/users/me/listings?page=${page}&size=${size}`

@@ -37,6 +37,19 @@ export interface UserProfile {
   lastOnline?: string;
 }
 
+export interface UserCar {
+  id: number;
+  displayName: string;
+  brand: string;
+  model: string;
+  generation?: string;
+  year?: number;
+  engineVolume?: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CategoryTreeNode {
   id: number;
   name: string;

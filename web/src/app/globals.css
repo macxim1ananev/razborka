@@ -125,6 +125,22 @@ main.page {
   font-size: 0.94rem;
 }
 
+.car-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.car-switcher select {
+  max-width: 170px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.84rem;
+}
+
 .post-btn {
   margin-left: 0.3rem;
   background: #14b74f;
@@ -213,6 +229,13 @@ h2 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 1rem;
+}
+
+.list-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.8rem;
+  margin-top: 1rem;
 }
 
 .card {

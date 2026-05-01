@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fetchMe, updateMe } from "@/lib/api";
 import { useAuth } from "@/components/AuthProvider";
@@ -81,6 +82,9 @@ export default function ProfilePage() {
         </button>
       </form>
       <p style={{ marginTop: "2rem" }}>
+        <Link href="/me/cars" className="btn btn--ghost" style={{ marginRight: "0.5rem" }}>
+          Мои авто
+        </Link>
         <button type="button" className="btn btn--ghost" onClick={logout}>
           Выйти
         </button>

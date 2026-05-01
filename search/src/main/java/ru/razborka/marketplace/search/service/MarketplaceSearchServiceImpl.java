@@ -19,11 +19,14 @@ import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
+import ru.razborka.marketplace.common.security.SecurityUtils;
 import ru.razborka.marketplace.listing.media.ListingMediaDeliveryService;
 import ru.razborka.marketplace.search.document.ListingSearchDocument;
 import ru.razborka.marketplace.search.web.dto.FacetBucketDto;
 import ru.razborka.marketplace.search.web.dto.SearchHitDto;
 import ru.razborka.marketplace.search.web.dto.SearchResponseDto;
+import ru.razborka.marketplace.user.domain.UserCar;
+import ru.razborka.marketplace.user.repository.UserCarRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -40,70 +43,79 @@ public class MarketplaceSearchServiceImpl implements MarketplaceSearchService {
 
     private final ElasticsearchOperations operations;
     private final ListingMediaDeliveryService mediaDeliveryService;
+    private final UserCarRepository userCarRepository;
 
     public MarketplaceSearchServiceImpl(
             ElasticsearchOperations operations,
-            ListingMediaDeliveryService mediaDeliveryService
+            ListingMediaDeliveryService mediaDeliveryService,
+            UserCarRepository userCarRepository
     ) {
         this.operations = operations;
         this.mediaDeliveryService = mediaDeliveryService;
+        this.userCarRepository = userCarRepository;
     }
 
     @Override
-    @Cacheable(value = "searchResults", key = "#params.cacheKey()", unless = "#result == null")
+    @Cacheable(
+            value = "searchResults",
+            key = "#params.cacheKey()",
+            unless = "#result == null",
+            condition = "T(ru.razborka.marketplace.common.security.SecurityUtils).currentUserId().isEmpty()"
+    )
     public SearchResponseDto search(SearchParams params) {
-        Pageable pageable = PageRequest.of(params.page(), params.size());
+        SearchParams effective = applyActiveCarDefaults(params);
+        Pageable pageable = PageRequest.of(effective.page(), effective.size());
         BoolQuery.Builder bool = new BoolQuery.Builder();
         bool.must(m -> m.term(t -> t.field("status").value("active")));
 
-        if (params.categoryId() != null) {
-            bool.must(m -> m.term(t -> t.field("categoryId").value(params.categoryId())));
+        if (effective.categoryId() != null) {
+            bool.must(m -> m.term(t -> t.field("categoryId").value(effective.categoryId())));
         }
-        if (params.brand() != null && !params.brand().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("brands").value(params.brand())));
+        if (effective.brand() != null && !effective.brand().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("brands").value(effective.brand())));
         }
-        if (params.model() != null && !params.model().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("models").value(params.model())));
+        if (effective.model() != null && !effective.model().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("models").value(effective.model())));
         }
-        if (params.generation() != null && !params.generation().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("generations").value(params.generation())));
+        if (effective.generation() != null && !effective.generation().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("generations").value(effective.generation())));
         }
-        if (params.vin() != null && !params.vin().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("vin").value(params.vin().trim().toUpperCase())));
+        if (effective.vin() != null && !effective.vin().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("vin").value(effective.vin().trim().toUpperCase())));
         }
-        if (params.catalogBlock() != null && !params.catalogBlock().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("catalogBlock").value(params.catalogBlock())));
+        if (effective.catalogBlock() != null && !effective.catalogBlock().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("catalogBlock").value(effective.catalogBlock())));
         }
-        if (params.yearFrom() != null) {
-            bool.must(m -> m.range(r -> r.field("compatYearToMax").gte(JsonData.of(params.yearFrom()))));
+        if (effective.yearFrom() != null) {
+            bool.must(m -> m.range(r -> r.field("compatYearToMax").gte(JsonData.of(effective.yearFrom()))));
         }
-        if (params.yearTo() != null) {
-            bool.must(m -> m.range(r -> r.field("compatYearFromMin").lte(JsonData.of(params.yearTo()))));
+        if (effective.yearTo() != null) {
+            bool.must(m -> m.range(r -> r.field("compatYearFromMin").lte(JsonData.of(effective.yearTo()))));
         }
-        if (params.engineVolume() != null) {
-            double v = params.engineVolume();
+        if (effective.engineVolume() != null) {
+            double v = effective.engineVolume();
             bool.must(m -> m.exists(e -> e.field("compatEngineVolMin")));
             bool.must(m -> m.exists(e -> e.field("compatEngineVolMax")));
             bool.must(m -> m.range(r -> r.field("compatEngineVolMin").lte(JsonData.of(v))));
             bool.must(m -> m.range(r -> r.field("compatEngineVolMax").gte(JsonData.of(v))));
         }
-        if (params.partCondition() != null && !params.partCondition().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("partCondition").value(params.partCondition())));
+        if (effective.partCondition() != null && !effective.partCondition().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("partCondition").value(effective.partCondition())));
         }
-        if (params.originalReplica() != null && !params.originalReplica().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("originalReplica").value(params.originalReplica())));
+        if (effective.originalReplica() != null && !effective.originalReplica().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("originalReplica").value(effective.originalReplica())));
         }
-        if (params.priceMin() != null) {
-            bool.must(m -> m.range(r -> r.field("price").gte(JsonData.of(params.priceMin().doubleValue()))));
+        if (effective.priceMin() != null) {
+            bool.must(m -> m.range(r -> r.field("price").gte(JsonData.of(effective.priceMin().doubleValue()))));
         }
-        if (params.priceMax() != null) {
-            bool.must(m -> m.range(r -> r.field("price").lte(JsonData.of(params.priceMax().doubleValue()))));
+        if (effective.priceMax() != null) {
+            bool.must(m -> m.range(r -> r.field("price").lte(JsonData.of(effective.priceMax().doubleValue()))));
         }
-        if (params.city() != null && !params.city().isBlank()) {
-            bool.must(m -> m.term(t -> t.field("sellerCity").value(params.city())));
+        if (effective.city() != null && !effective.city().isBlank()) {
+            bool.must(m -> m.term(t -> t.field("sellerCity").value(effective.city())));
         }
-        if (params.q() != null && !params.q().isBlank()) {
-            bool.must(m -> m.match(mm -> mm.field("title").query(params.q())));
+        if (effective.q() != null && !effective.q().isBlank()) {
+            bool.must(m -> m.match(mm -> mm.field("title").query(effective.q())));
         }
 
         Query root = Query.of(q -> q.bool(bool.build()));
@@ -135,7 +147,7 @@ public class MarketplaceSearchServiceImpl implements MarketplaceSearchService {
                 hits = operations.search(fallbackQuery, ListingSearchDocument.class);
             } catch (Exception fallbackEx) {
                 log.error("Search fallback failed: {}", fallbackEx.getMessage());
-                return new SearchResponseDto(List.of(), 0, params.page(), params.size(), Map.of());
+                return new SearchResponseDto(List.of(), 0, effective.page(), effective.size(), Map.of());
             }
         }
         List<SearchHitDto> content = new ArrayList<>();
@@ -172,10 +184,54 @@ public class MarketplaceSearchServiceImpl implements MarketplaceSearchService {
         return new SearchResponseDto(
                 content,
                 hits.getTotalHits(),
-                params.page(),
-                params.size(),
+                effective.page(),
+                effective.size(),
                 facets
         );
+    }
+
+    private SearchParams applyActiveCarDefaults(SearchParams params) {
+        var userId = SecurityUtils.currentUserId();
+        if (userId.isEmpty()) {
+            return params;
+        }
+        var activeCar = userCarRepository.findByUserIdAndActiveTrue(userId.get());
+        if (activeCar.isEmpty()) {
+            return params;
+        }
+        UserCar car = activeCar.get();
+        String brand = hasText(params.brand()) ? params.brand() : car.getBrand();
+        String model = hasText(params.model()) ? params.model() : car.getModel();
+        String generation = hasText(params.generation()) ? params.generation() : car.getGeneration();
+        Integer yearFrom = params.yearFrom() != null ? params.yearFrom() : car.getYear();
+        Integer yearTo = params.yearTo() != null ? params.yearTo() : car.getYear();
+        Double engineVolume = params.engineVolume();
+        if (engineVolume == null && car.getEngineVolume() != null) {
+            engineVolume = car.getEngineVolume().doubleValue();
+        }
+        return new SearchParams(
+                params.categoryId(),
+                brand,
+                model,
+                generation,
+                params.vin(),
+                params.catalogBlock(),
+                yearFrom,
+                yearTo,
+                engineVolume,
+                params.partCondition(),
+                params.originalReplica(),
+                params.priceMin(),
+                params.priceMax(),
+                params.city(),
+                params.q(),
+                params.page(),
+                params.size()
+        );
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private static void putLongTerms(ElasticsearchAggregations eas, String name, Map<String, List<FacetBucketDto>> facets) {

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.razborka.marketplace.listing.domain.Listing;
+import ru.razborka.marketplace.listing.domain.ListingCompatibility;
 import ru.razborka.marketplace.listing.domain.ListingStatus;
 
 import java.util.List;
@@ -16,6 +17,33 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
 
     @EntityGraph(attributePaths = {"seller", "category", "photos"})
     Page<Listing> findByStatusOrderByCreatedAtDesc(ListingStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"seller", "category", "photos"})
+    @Query("""
+            SELECT DISTINCT l
+            FROM Listing l
+            WHERE l.status = ru.razborka.marketplace.listing.domain.ListingStatus.active
+              AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM UserCar ucNoActive
+                        WHERE ucNoActive.user.id = :userId AND ucNoActive.active = true
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM ListingCompatibility c, UserCar uc
+                        WHERE c.listing = l
+                          AND uc.user.id = :userId
+                          AND uc.active = true
+                          AND lower(c.brand) = lower(uc.brand)
+                          AND lower(c.model) = lower(uc.model)
+                          AND (c.generation IS NULL OR uc.generation IS NULL OR lower(c.generation) = lower(uc.generation))
+                          AND (uc.year IS NULL OR ((c.yearFrom IS NULL OR c.yearFrom <= uc.year) AND (c.yearTo IS NULL OR c.yearTo >= uc.year)))
+                          AND (uc.engineVolume IS NULL OR c.engineVolume IS NULL OR abs(c.engineVolume - uc.engineVolume) <= 0.11)
+                    )
+                )
+            ORDER BY l.createdAt DESC
+            """)
+    Page<Listing> findActiveMatchingActiveUserCar(@Param("userId") Long userId, Pageable pageable);
 
     @Query("""
             SELECT DISTINCT l FROM Listing l

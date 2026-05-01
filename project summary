@@ -46,6 +46,7 @@
 - `auth.web.DevAuthController` — dev-only выдача JWT для тестовых telegram id.
 - `auth.web.JwtCookiesAppender` — запись access/refresh токенов в cookies.
 - `auth.repository.RefreshTokenRepository` — хранение/поиск/ревокация refresh токенов.
+- Локальный режим: web-клиент при запуске на `localhost` пытается выполнить auto-login через `/auth/dev/token`; поведение управляется `NEXT_PUBLIC_AUTO_DEV_LOGIN`.
 
 ## Модуль `listing` (каталог объявлений)
 
@@ -103,8 +104,16 @@
 
 ## Модуль `user` (профиль пользователя)
 - `user.service.UserProfileService` / `UserProfileServiceImpl` — чтение/обновление профиля текущего пользователя.
+- `user.service.UserCarService` / `UserCarServiceImpl` — управление гаражом пользователя (несколько авто + активное авто).
 - `user.web.UserController` — `/api/users/me` (GET/PUT).
+- `user.web.UserCarController` — `/api/users/me/cars` (CRUD + activate).
 - `user.repository.UserRepository` — доступ к пользователям (включая lookup по telegramId).
+- `user.repository.UserCarRepository` — доступ к автомобилям пользователя и активному авто.
+
+## Персонализация ленты по авто
+- `listing.repository.ListingRepository.findActiveMatchingActiveUserCar` — фильтрация активных объявлений по активному авто пользователя.
+- `listing.service.ListingServiceImpl` — персональная лента в `/api/listings` для авторизованного пользователя с активным авто.
+- `search.service.MarketplaceSearchServiceImpl` — авто-подстановка brand/model/generation/year/engine из активного авто, если пользователь не задал эти фильтры вручную.
 
 ## Правило актуальности этого файла
 - Перед любыми архитектурными или кодовыми изменениями сверяться с этим файлом.

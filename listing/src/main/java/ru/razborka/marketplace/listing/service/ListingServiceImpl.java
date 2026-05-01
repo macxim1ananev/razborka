@@ -68,10 +68,18 @@ public class ListingServiceImpl implements ListingService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "listingPreviews", key = "#page + '-' + #size", unless = "#result == null", condition = "#page < 5")
+    @Cacheable(
+            value = "listingPreviews",
+            key = "#page + '-' + #size",
+            unless = "#result == null",
+            condition = "#page < 5 && T(ru.razborka.marketplace.common.security.SecurityUtils).currentUserId().isEmpty()"
+    )
     public Page<ListingPreviewDto> listActivePreviewsForPublic(int page, int size) {
         Pageable p = PageRequest.of(page, size);
-        return listingRepository.findByStatusOrderByCreatedAtDesc(ListingStatus.active, p).map(this::toPreviewDto);
+        return SecurityUtils.currentUserId()
+                .map(userId -> listingRepository.findActiveMatchingActiveUserCar(userId, p))
+                .orElseGet(() -> listingRepository.findByStatusOrderByCreatedAtDesc(ListingStatus.active, p))
+                .map(this::toPreviewDto);
     }
 
     @Override
